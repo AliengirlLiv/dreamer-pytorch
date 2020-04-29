@@ -1,5 +1,14 @@
 import argparse
 
+
+def collect_data(start_state, policy, env, max_timesteps):
+    # take list of start states, create Episode by rolling out model
+    # assume env uses the gym api, and policy takes in state and spits out action
+    # probably also assume the env has some wrapper to obtain the environment state, if we're saving that
+    pass
+
+
+
 def build_and_run(n_videos, n_frames, n_samples, sample_from_env, state_selection, action_selection,
                   real_policy_path, adv_policy_path, dataset_path, save_path):
     asdf = 3
@@ -16,8 +25,14 @@ def build_and_run(n_videos, n_frames, n_samples, sample_from_env, state_selectio
     #   Extract previous k timesteps (or until beginning or trajectory) of video frames leading up to each index
     #   for t in n_frames steps:
     #      apply real and counterfactual policy starting from the start state
-    #      # Store data points in a new Dataset
-    #      # call save_videos on a list of both datasets.
+    #      # Store data points in a new Episode
+    #      # call save_videos on a list of both episodes.
+
+
+
+
+
+
 
 
 
@@ -38,11 +53,3 @@ if __name__ == "__main__":
         dataset_path=args.dataset_path,
         save_path=args.save_path
     )
-
-
-
-# TODO: TONIGHT Have
-#       - main function which runs with a single set of arguments
-#       - each function prints what it's doing at the moment
-#       - create project board with tasks
-#       - push and commit

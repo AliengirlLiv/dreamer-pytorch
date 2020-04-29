@@ -1,6 +1,6 @@
 
-def generate_video(dataset_list):
-    # Loop through dataset_list, generating videos
+def generate_video(episode_list, start_index=None, end_index=None):
+    # Loop through episode_list, generating videos
     # concatenate them all together
     # return videos
-    raise NotImplementedError("we should fix this!")
+    pass
