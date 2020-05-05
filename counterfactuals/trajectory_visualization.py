@@ -109,9 +109,10 @@ def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory)
             pretrained_video.extend([pretrained_img] * 3)
 
         # Construct Pretrained + Counterfactual Frame
+        # We are never blurring the frame on the left
         not_diverged = step <= divergent_step
         s = state if not_diverged else o_divergent_state
-        big_frame = make_img(s, "Original Trajectory", text_scale=1.2, active=not_diverged)
+        big_frame = make_img(s, "Original Trajectory", text_scale=1.2, active=True)
 
         # We do this to keep the big frame unblurred for one more step
         diverged = step >= divergent_step
@@ -119,7 +120,7 @@ def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory)
         o_divergent_img = make_img(
                 s, "Original Trajectory", downscale_factor=2, active=diverged,
             )
-            
+
         c_state = counterfactual.state[counterfactual_step]
         c_divergent_img = make_img(
             c_state, "Counterfactual Trajectory", downscale_factor=2, active=diverged
