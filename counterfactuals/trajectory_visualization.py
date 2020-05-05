@@ -18,6 +18,27 @@ def add_centered_text(
     textcoords = ((img.shape[1] - textsize[0]) // 2, textsize[1] + top_padding)
     cv2.putText(img, text, textcoords, font, scale, color, thickness, cv2.LINE_AA)
 
+def add_mission_text(img: np.ndarray, text:str, scale=0.7):
+    """
+    Add boarder at the bottom with mission text
+    """
+    thickness = 1
+    color = (255, 255, 255)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    textsize = cv2.getTextSize(text, font, scale, thickness)[0]
+    img = cv2.copyMakeBorder(
+            img,
+            top=0,
+            bottom=textsize[1] + 20,
+            left=0,
+            right=0,
+            borderType=cv2.BORDER_CONSTANT,
+            value=[0, 0, 0]
+    )
+    textcoords = ((img.shape[1] // 2 - textsize[0] // 2, img.shape[0] - textsize[1]))
+    cv2.putText(img, text, textcoords, font, scale, color, thickness, cv2.LINE_AA)
+    return img
+
 
 def gray_and_blur(img: np.ndarray):
     """
@@ -41,8 +62,7 @@ def make_img(
     :param text: Text to write in center
     :param text_scale: Size of the text, usually 0.6 or 1.2
     :param downscale_factor: Most env renders are too big, so downsize it
-    :active 
-
+    :param active: Should this be grayed and blurred?
     """
     frame = state.render(mode="rgb_array")
     new_size = (frame.shape[1] // downscale_factor, frame.shape[0] // downscale_factor)
@@ -75,30 +95,32 @@ def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory)
     divergent_step = counterfactual.step[0]
     o_divergent_state = copy.deepcopy(original.state[divergent_step])
     counterfactual_step = 0
-    video = []
+    cf_video = []
+    pretrained_video = []
     for state, step in zip(original.state, original.step):
-        # Focus on big frame until the divergent step
-        if step <= divergent_step:
-            big_frame = make_img(state, "Original Trajectory", text_scale=1.2)
-        elif step > divergent_step:
-            big_frame = make_img(
-                o_divergent_state, "Original Trajectory", text_scale=1.2, active=False
-            )
+        
+        # Construct Pretrained Frame
+        pretrained_img = make_img(state, "Original Trajectory", text_scale=1.2)
+        if hasattr(state, 'mission'):
+            pretrained_img = add_mission_text(pretrained_img, state.mission)
+        pretrained_video.append(pretrained_img)
+        if step == original.step[-1]:
+            add_centered_text(pretrained_img, "DONE", top_padding=200, scale=2.4)
+            pretrained_video.extend([pretrained_img] * 3)
 
-        c_state = counterfactual.state[counterfactual_step]
+        # Construct Pretrained + Counterfactual Frame
+        not_diverged = step <= divergent_step
+        s = state if not_diverged else o_divergent_state
+        big_frame = make_img(s, "Original Trajectory", text_scale=1.2, active=not_diverged)
 
+        # We do this to keep the big frame unblurred for one more step
         diverged = step >= divergent_step
-        if step >= divergent_step:
-            o_divergent_img = make_img(
-                state, "Original Trajectory", downscale_factor=2, active=diverged,
+        s = state if diverged else o_divergent_state
+        o_divergent_img = make_img(
+                s, "Original Trajectory", downscale_factor=2, active=diverged,
             )
-        else:
-            o_divergent_img = make_img(
-                o_divergent_state,
-                "Original Trajectory",
-                downscale_factor=2,
-                active=diverged,
-            )
+            
+        c_state = counterfactual.state[counterfactual_step]
         c_divergent_img = make_img(
             c_state, "Counterfactual Trajectory", downscale_factor=2, active=diverged
         )
@@ -122,9 +144,11 @@ def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory)
                     downscale_factor=2,
                     active=diverged,
                 )
-                video.append(
-                    compose_frames(big_frame, o_divergent_img, c_divergent_img)
-                )
+
+                f = compose_frames(big_frame, o_divergent_img, c_divergent_img)
+                if hasattr(state, 'mission'):
+                    f = add_mission_text(f, state.mission)
+                cf_video.append(f)
                 c_state.close()
                 counterfactual_step += 1
             c_state = counterfactual.state[counterfactual_step]
@@ -135,9 +159,13 @@ def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory)
                 active=diverged,
             )
             add_centered_text(c_divergent_img, "DONE", top_padding=100)
-        video.append(compose_frames(big_frame, o_divergent_img, c_divergent_img))
+        f = compose_frames(big_frame, o_divergent_img, c_divergent_img)
+        if hasattr(state, 'mission'):
+            f = add_mission_text(f, state.mission)
+        cf_video.append(f)  
 
         c_state.close()
         state.close()
+    cf_video.extend([f] * 5)
     o_divergent_state.close()
-    return video
+    return pretrained_video, cf_video
