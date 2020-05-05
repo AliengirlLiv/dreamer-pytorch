@@ -113,6 +113,9 @@ def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory)
         not_diverged = step <= divergent_step
         s = state if not_diverged else o_divergent_state
         big_frame = make_img(s, "Original Trajectory", text_scale=1.2, active=True)
+        if not not_diverged:
+            big_frame = big_frame // 2
+        
 
         # We do this to keep the big frame unblurred for one more step
         diverged = step >= divergent_step
