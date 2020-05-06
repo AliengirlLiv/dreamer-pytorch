@@ -1,9 +1,13 @@
 import cv2
 import numpy as np
 import copy
+from gym_minigrid.minigrid import TILE_PIXELS
 
 from counterfactuals.dataset import Trajectory
+from counterfactuals.color_modified_gridworld import render_agent_tile
 
+YELLOW = (255, 255, 0)
+PURPLE = (255, 0, 255)
 
 def add_centered_text(
     img: np.ndarray,
@@ -85,6 +89,116 @@ def compose_frames(
     """
     stacked_frames = np.append(top_right, bottom_right, 0)
     return np.append(big_frame, stacked_frames, 1)
+
+
+def update_render(img, agent_pos, agent_dir, color, tile_size=TILE_PIXELS):
+    """
+    """
+    tile_img = render_agent_tile(agent_dir, color)
+
+    i, j = agent_pos
+    ymin = j * tile_size
+    ymax = (j + 1) * tile_size
+    xmin = i * tile_size
+    xmax = (i + 1) * tile_size
+    img[ymin:ymax, xmin:xmax, :] = tile_img
+
+def overlay_cf(img1, img2):
+    return np.max(np.stack([img1, img2], axis=0), axis=0)
+
+def overlay_visualization(original: Trajectory, counterfactual: Trajectory, user_states: Trajectory):
+    """
+    Creates a visualization to view how the behavior of the counterfactual
+    trajectory differs from the original, or pretrained trajectory.
+    """
+    divergent_step = counterfactual.step[0]
+    o_divergent_state = copy.deepcopy(original.state[divergent_step])
+    counterfactual_step = 0
+    combined_video = []
+    pretrained_video = []
+    pretrained_continuation = []
+    cf_continuation = []
+    for state, step in zip(original.state, original.step):
+
+        diverged = step >= divergent_step
+
+        # Construct Pretrained Frame
+        pretrained_img = make_img(state, "Original Trajectory", text_scale=1.2)
+        if hasattr(state, 'mission'):
+            pretrained_img = add_mission_text(pretrained_img, state.mission)
+        pretrained_video.append(pretrained_img)
+        if diverged:
+            pretrained_continuation.append(pretrained_img)
+        if step == original.step[-1]:
+            add_centered_text(pretrained_img, "DONE", top_padding=200, scale=2.4)
+            pretrained_video.extend([pretrained_img] * 3)
+
+        # Construct Pretrained + Counterfactual Frame
+        original_img = make_img(state, "Original Trajectory", text_scale=1.2, active=True)
+        c_state = counterfactual.state[counterfactual_step]
+        if diverged:
+            color = YELLOW if step in user_states.step else PURPLE
+            cf_image = make_img(c_state, "", text_scale=1.2)
+            # Color the counterfactual agent differently
+            update_render(cf_image, c_state.agent_pos, c_state.agent_dir, color)
+            combined_image = overlay_cf(original_img, cf_image)
+
+        else:
+            combined_image = original_img
+        if hasattr(state, 'mission'):
+            combined_image = add_mission_text(combined_image, state.mission)
+
+        # Some trajectories had different lengths, so this preserves
+        # the counterfactual state if this trajectory ends first
+        if counterfactual_step < len(counterfactual.state) - 1:
+            if step >= divergent_step:
+                counterfactual_step += 1
+            c_state.close()
+        elif counterfactual_step == len(counterfactual.state) - 1:
+            add_centered_text(combined_image, "Done with counterfactual", top_padding=100)
+
+        # And this checks if the counterfactual trajectory is longer
+        if step == original.step[-1]:
+            while counterfactual_step < len(counterfactual.step) - 1:
+                c_state = counterfactual.state[counterfactual_step]
+                cf_image = make_img(c_state, "", text_scale=1.2)
+                update_render(cf_image, c_state.agent_pos, c_state.agent_dir, PURPLE)
+                combined_image = overlay_cf(original_img, cf_image)
+                add_centered_text(combined_image, "Done with original", top_padding=200)
+                if hasattr(state, 'mission'):
+                    combined_image = add_mission_text(combined_image, state.mission)
+                combined_video.append(combined_image)
+                c_state.close()
+                counterfactual_step += 1
+            c_state = counterfactual.state[counterfactual_step]
+            cf_image = make_img(c_state, "", text_scale=1.2)
+            update_render(cf_image, c_state.agent_pos, c_state.agent_dir, PURPLE)
+            combined_image = overlay_cf(original_img, cf_image)
+            if hasattr(state, 'mission'):
+                combined_image = add_mission_text(combined_image, state.mission)
+            add_centered_text(combined_image, "Done with original", top_padding=200)
+            add_centered_text(combined_image, "Done with counterfactual", top_padding=100)
+        combined_video.append(combined_image)
+
+        c_state.close()
+        state.close()
+
+        # Save completion policy individually too
+        cf_image = make_img(c_state, "", text_scale=1.2)
+        if hasattr(state, 'mission'):
+            cf_image = add_mission_text(cf_image, state.mission)
+        cf_continuation.append(cf_image)
+        if counterfactual_step == counterfactual.step[-1]:
+            add_centered_text(cf_image, "DONE", top_padding=200, scale=2.4)
+            cf_continuation.extend([cf_image] * 3)
+
+    combined_video.extend([combined_image] * 5)
+
+
+
+    o_divergent_state.close()
+    return pretrained_video, combined_video, pretrained_continuation, cf_continuation
+
 
 
 def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory):
