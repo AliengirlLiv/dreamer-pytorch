@@ -10,7 +10,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-dir', default=os.path.join('..', 'data'))
     parser.add_argument('--save-dir', default=os.path.join('..', 'videos'))
-    parser.add_argument('--fps', default=1)
+    parser.add_argument('--fps', default=1.5)
     args = parser.parse_args()
 
     for bot_dir in os.listdir(args.data_dir):
