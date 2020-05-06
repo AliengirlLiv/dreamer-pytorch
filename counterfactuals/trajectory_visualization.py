@@ -181,8 +181,8 @@ def overlay_visualization(original: Trajectory, counterfactual: Trajectory, user
                 if hasattr(state, 'mission'):
                     combined_image = add_mission_text(combined_image, state.mission)
                 add_counter(combined_image,
-                    min(step + counterfactual_step, counterfactual.step[counterfactual_step]),
-                    max(original.step[-1], counterfactual.step[-1]))
+                    max(step, counterfactual.step[counterfactual_step]),
+                    max(original.step[-1]+1, counterfactual.step[-1]))
                 combined_video.append(combined_image)
                 c_state.close()
                 counterfactual_step += 1
@@ -195,10 +195,10 @@ def overlay_visualization(original: Trajectory, counterfactual: Trajectory, user
             add_centered_text(combined_image, "Done with original", top_padding=200)
             add_centered_text(combined_image, "Done with alternative", top_padding=100)
     
-        true_step = step + 1 if not diverged else counterfactual.step[counterfactual_step]
+        true_step = step + 1 if not diverged else max(counterfactual.step[counterfactual_step], step+1)
         add_counter(combined_image,
                 true_step,
-                max(original.step[-1], counterfactual.step[-1]))
+                max(original.step[-1]+1, counterfactual.step[-1]))
 
         c_state.close()
         state.close()
