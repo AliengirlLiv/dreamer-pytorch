@@ -42,8 +42,8 @@ def main():
                         os.makedirs(path)
                 imageio.mimsave(os.path.join(original_path, name), original_video, fps=args.fps)
                 imageio.mimsave(os.path.join(explanation_path, name), cf_video, fps=args.fps)
-                imageio.mimsave(os.path.join(original_cont_path, name), original_video, fps=args.fps)
-                imageio.mimsave(os.path.join(explanation_cont_path, name), cf_video, fps=args.fps)
+                imageio.mimsave(os.path.join(original_cont_path, name), original_cont, fps=args.fps)
+                imageio.mimsave(os.path.join(explanation_cont_path, name), cf_cont, fps=args.fps)
 
 
 if __name__ == '__main__':

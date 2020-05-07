@@ -136,18 +136,22 @@ def overlay_visualization(original: Trajectory, counterfactual: Trajectory, user
         diverged = step >= divergent_step
 
         # Construct Pretrained Frame
-        pretrained_img = make_img(state, "Original Path", text_scale=1.2)
+        pretrained_img = make_img(state, "", text_scale=1.2)
         if hasattr(state, 'mission'):
             pretrained_img = add_mission_text(pretrained_img, state.mission)
-        pretrained_video.append(pretrained_img)
+        img_copy = copy.deepcopy(pretrained_img)
+        pretrained_video.append(img_copy)
+        add_counter(img_copy, step, original.step[-1] + 1)
         if diverged:
-            pretrained_continuation.append(pretrained_img)
+            img_copy = copy.deepcopy(pretrained_img)
+            add_counter(img_copy, step - divergent_step, original.step[-1] + 1 - divergent_step)
+            pretrained_continuation.append(img_copy)
         if step == original.step[-1]:
             add_centered_text(pretrained_img, "DONE", top_padding=200, scale=2.4)
             pretrained_video.extend([pretrained_img] * 3)
 
         # Construct Pretrained + Counterfactual Frame
-        original_img = make_img(state, "Original Path", text_scale=1.2, active=True)
+        original_img = make_img(state, "", text_scale=1.2, active=True)
         c_state = counterfactual.state[counterfactual_step]
         if diverged:
             color = YELLOW if step in user_states.step else PURPLE
@@ -207,11 +211,10 @@ def overlay_visualization(original: Trajectory, counterfactual: Trajectory, user
         cf_image = make_img(c_state, "", text_scale=1.2)
         if hasattr(state, 'mission'):
             cf_image = add_mission_text(cf_image, state.mission)
-        add_counter(cf_image,
-                step + counterfactual_step,
-                max(original.step[-1], counterfactual.step[-1]))
-        combined_video.append(combined_image)
+        add_counter(cf_image, true_step - divergent_step, counterfactual.step[-1] - divergent_step + 1)
         cf_continuation.append(cf_image)
+
+        combined_video.append(combined_image)
         
         if counterfactual_step == counterfactual.step[-1]:
             add_centered_text(cf_image, "DONE", top_padding=200, scale=2.4)
