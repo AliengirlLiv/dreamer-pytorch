@@ -139,16 +139,18 @@ def overlay_visualization(original: Trajectory, counterfactual: Trajectory, user
         pretrained_img = make_img(state, "", text_scale=1.2)
         if hasattr(state, 'mission'):
             pretrained_img = add_mission_text(pretrained_img, state.mission)
-        img_copy = copy.deepcopy(pretrained_img)
-        pretrained_video.append(img_copy)
-        add_counter(img_copy, step, original.step[-1] + 1)
+        img_copy_pretrained = copy.deepcopy(pretrained_img)
+        pretrained_video.append(img_copy_pretrained)
+        add_counter(img_copy_pretrained, step + 1, original.step[-1] + 1)
         if diverged:
-            img_copy = copy.deepcopy(pretrained_img)
-            add_counter(img_copy, step - divergent_step, original.step[-1] + 1 - divergent_step)
-            pretrained_continuation.append(img_copy)
+            img_copy_pretrained_cont = copy.deepcopy(pretrained_img)
+            add_counter(img_copy_pretrained_cont, step - divergent_step + 1, original.step[-1] + 1 - divergent_step)
+            pretrained_continuation.append(img_copy_pretrained_cont)
         if step == original.step[-1]:
-            add_centered_text(pretrained_img, "DONE", top_padding=200, scale=2.4)
-            pretrained_video.extend([pretrained_img] * 3)
+            add_centered_text(img_copy_pretrained, "DONE", top_padding=200, scale=2.4)
+            add_centered_text(img_copy_pretrained_cont, "DONE", top_padding=200, scale=2.4)
+            pretrained_video.extend([img_copy_pretrained] * 3)
+            pretrained_continuation.extend([img_copy_pretrained_cont] * 3)
 
         # Construct Pretrained + Counterfactual Frame
         original_img = make_img(state, "", text_scale=1.2, active=True)
@@ -165,6 +167,14 @@ def overlay_visualization(original: Trajectory, counterfactual: Trajectory, user
         if hasattr(state, 'mission'):
             combined_image = add_mission_text(combined_image, state.mission)
 
+        # Save completion policy individually too
+        if diverged and step <= counterfactual.step[-1]:
+            cf_image = make_img(c_state, "", text_scale=1.2)
+            if hasattr(state, 'mission'):
+                cf_image = add_mission_text(cf_image, state.mission)
+            add_counter(cf_image, step - divergent_step + 1, counterfactual.step[-1] + 1 - divergent_step)
+            cf_continuation.append(cf_image)
+
         # Some trajectories had different lengths, so this preserves
         # the counterfactual state if this trajectory ends first
         if counterfactual_step < len(counterfactual.state) - 1:
@@ -179,6 +189,16 @@ def overlay_visualization(original: Trajectory, counterfactual: Trajectory, user
             while counterfactual_step < len(counterfactual.step) - 1:
                 c_state = counterfactual.state[counterfactual_step]
                 cf_image = make_img(c_state, "", text_scale=1.2)
+
+                # Save cf_cont image
+                cf_cont_image = make_img(c_state, "", text_scale=1.2)
+                if hasattr(state, 'mission'):
+                    cf_cont_image = add_mission_text(cf_cont_image, state.mission)
+                add_counter(cf_cont_image, counterfactual_step + 1, counterfactual.step[-1] + 1 - divergent_step)
+                cf_continuation.append(cf_cont_image)
+
+
+                # Save combined image
                 update_render(cf_image, c_state.agent_pos, c_state.agent_dir, PURPLE)
                 combined_image = overlay_cf(original_img, cf_image)
                 add_centered_text(combined_image, "Done with original", top_padding=200)
@@ -206,19 +226,14 @@ def overlay_visualization(original: Trajectory, counterfactual: Trajectory, user
 
         c_state.close()
         state.close()
-
-        # Save completion policy individually too
-        cf_image = make_img(c_state, "", text_scale=1.2)
-        if hasattr(state, 'mission'):
-            cf_image = add_mission_text(cf_image, state.mission)
-        add_counter(cf_image, true_step - divergent_step, counterfactual.step[-1] - divergent_step + 1)
-        cf_continuation.append(cf_image)
-
         combined_video.append(combined_image)
-        
-        if counterfactual_step == counterfactual.step[-1]:
-            add_centered_text(cf_image, "DONE", top_padding=200, scale=2.4)
-            cf_continuation.extend([cf_image] * 3)
+
+    cf_image = make_img(c_state, "", text_scale=1.2)
+    add_centered_text(cf_image, "DONE", top_padding=200, scale=2.4)
+    if hasattr(state, 'mission'):
+        cf_image = add_mission_text(cf_image, state.mission)
+    add_counter(cf_image, counterfactual.step[-1] + 1 - divergent_step, counterfactual.step[-1] + 1 - divergent_step)
+    cf_continuation.extend([cf_image] * 3)
 
     combined_video.extend([combined_image] * 3)
     
