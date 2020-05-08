@@ -1,9 +1,13 @@
 import cv2
 import numpy as np
 import copy
+from gym_minigrid.minigrid import TILE_PIXELS
 
 from counterfactuals.dataset import Trajectory
+from counterfactuals.color_modified_gridworld import render_agent_tile
 
+YELLOW = (255, 255, 0)
+PURPLE = (255, 0, 255)
 
 def add_centered_text(
     img: np.ndarray,
@@ -39,6 +43,23 @@ def add_mission_text(img: np.ndarray, text:str, scale=0.7):
     cv2.putText(img, text, textcoords, font, scale, color, thickness, cv2.LINE_AA)
     return img
 
+def add_counter(img, numerator, denomenator, one_index=False):
+    """
+    Add frame counter to bottom left of image
+    """
+    # Change zero-indexed numbers into one-indexed numbers:
+    if one_index:
+        numerator += 1
+        denomenator += 1
+
+    text = f'{numerator}/{denomenator}'
+    color = (255, 255, 255)
+    scale = 0.6
+    thickness = 1
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    textsize = cv2.getTextSize(text, font, scale, thickness)[0]
+    textcoords = (5, img.shape[0] - textsize[1])
+    cv2.putText(img, text, textcoords, font, scale, color, thickness, cv2.LINE_AA)
 
 def gray_and_blur(img: np.ndarray):
     """
@@ -52,8 +73,8 @@ def gray_and_blur(img: np.ndarray):
 
 def make_img(
     state,
-    text: str,
-    text_scale: float = 0.6,
+    text: str = "",
+    text_scale: float = 1.2,
     downscale_factor: int = 1,
     active: bool = True,
 ):
@@ -87,6 +108,141 @@ def compose_frames(
     return np.append(big_frame, stacked_frames, 1)
 
 
+def update_render(img, agent_pos, agent_dir, color, tile_size=TILE_PIXELS):
+    """
+    """
+    tile_img = render_agent_tile(agent_dir, color)
+
+    i, j = agent_pos
+    ymin = j * tile_size
+    ymax = (j + 1) * tile_size
+    xmin = i * tile_size
+    xmax = (i + 1) * tile_size
+    img[ymin:ymax, xmin:xmax, :] = tile_img
+
+def overlay_cf(img1, img2):
+    return np.max(np.stack([img1, img2], axis=0), axis=0)
+
+
+def overlay_visualization(original: Trajectory, counterfactual: Trajectory, user_states: Trajectory):
+    """
+    Creates a visualization to view how the behavior of the counterfactual
+    trajectory differs from the original, or pretrained trajectory.
+    """
+    divergent_step = counterfactual.step[0]
+    o_divergent_state = copy.deepcopy(original.state[divergent_step])
+    counterfactual_step = 0
+    combined_video = []
+    pretrained_video = []
+    pretrained_continuation = []
+    cf_continuation = []
+
+    def add_mission(img):
+        if hasattr(state, 'mission'):
+            img = add_mission_text(img, state.mission)
+        return img
+
+    def update_combined_video():
+        original_img = make_img(state)
+        if diverged:
+            color = YELLOW if step in user_states.step else PURPLE
+            cf_image = make_img(c_state)
+            # Color the counterfactual agent differently
+            update_render(cf_image, c_state.agent_pos, c_state.agent_dir, color)
+            if step >= last_counterfactual_step():
+                add_centered_text(cf_image, "Done with alternative", top_padding=100)
+            if step >= last_original_step():
+                add_centered_text(original_img, "Done with original", top_padding=200)
+
+            combined_image = overlay_cf(original_img, cf_image)
+        else:
+            combined_image = original_img
+        combined_image = add_mission(combined_image)
+        add_counter(combined_image, step, last_total_step(), one_index=True)
+        combined_video.append(combined_image)
+        if step == last_total_step():
+            combined_video.extend([combined_image] * 3)
+
+    def update_pretrained_video():
+        img = make_img(state)
+        img = add_mission(img)
+        add_counter(img, step, last_original_step(), one_index=True)
+        pretrained_video.append(img)
+
+        if step == last_original_step():
+            add_centered_text(img, "DONE", top_padding=200, scale=2.4)
+            pretrained_continuation.extend([img] * 3)
+
+
+    def update_cf_continuation():
+        if diverged and step <= last_counterfactual_step():
+            cf_image = make_img(c_state)
+            cf_image = add_mission(cf_image)
+            add_counter(cf_image, step - divergent_step, last_counterfactual_step() - divergent_step, one_index=True)
+            cf_continuation.append(cf_image)
+
+            if step == last_counterfactual_step():
+                add_centered_text(cf_image, "DONE", top_padding=200, scale=2.4)
+                cf_continuation.extend([cf_image] * 3)
+
+    def update_pretrained_continuation():
+        if diverged:
+            img = make_img(state)
+            img = add_mission(img)
+            add_counter(img, step - divergent_step, last_original_step() - divergent_step, one_index=True)
+            pretrained_continuation.append(img)
+
+            if step == last_original_step():
+                add_centered_text(img, "DONE", top_padding=200, scale=2.4)
+                pretrained_video.extend([img] * 3)
+
+    def last_original_step():
+        return original.step[-1]
+
+    def last_counterfactual_step():
+        return counterfactual.step[-1]
+
+    def last_total_step():
+        return max(last_original_step(), last_counterfactual_step())
+
+
+    # Loop through original trajectory
+    for state, step in zip(original.state, original.step):
+
+        diverged = step >= divergent_step
+        c_state = counterfactual.state[counterfactual_step]
+
+        update_pretrained_continuation()
+        update_pretrained_video()
+        update_combined_video()
+        update_cf_continuation()
+
+        # Counterfactual state is the index into the counterfactual.state list
+        if (step < last_counterfactual_step()) and (step >= divergent_step):
+            counterfactual_step += 1
+
+        c_state.close()
+        state.close()
+
+    # Add one so step is still tracking the index into the combined video
+    step += 1
+
+    # If the counterfactual trajectory is longer, add more frames
+    while step <= last_total_step():
+        c_state = counterfactual.state[counterfactual_step]
+        update_cf_continuation()
+        update_combined_video()
+        step += 1
+        counterfactual_step += 1
+        c_state.close()
+        state.close()
+
+    if not step >= last_total_step():
+        print("hi")
+    return pretrained_video, combined_video, pretrained_continuation, cf_continuation
+
+
+
 def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory):
     """
     Creates a visualization to view how the behavior of the counterfactual
@@ -100,7 +256,7 @@ def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory)
     for state, step in zip(original.state, original.step):
         
         # Construct Pretrained Frame
-        pretrained_img = make_img(state, "Original Trajectory", text_scale=1.2)
+        pretrained_img = make_img(state, "Original Path", text_scale=1.2)
         if hasattr(state, 'mission'):
             pretrained_img = add_mission_text(pretrained_img, state.mission)
         pretrained_video.append(pretrained_img)
@@ -112,7 +268,7 @@ def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory)
         # We are never blurring the frame on the left
         not_diverged = step <= divergent_step
         s = state if not_diverged else o_divergent_state
-        big_frame = make_img(s, "Original Trajectory", text_scale=1.2, active=True)
+        big_frame = make_img(s, "Original Path", text_scale=1.2, active=True)
         if not not_diverged:
             big_frame = big_frame // 2
         
@@ -121,12 +277,12 @@ def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory)
         diverged = step >= divergent_step
         s = state if diverged else o_divergent_state
         o_divergent_img = make_img(
-                s, "Original Trajectory", downscale_factor=2, active=diverged,
+                s, "Original Path", downscale_factor=2, active=diverged,
             )
 
         c_state = counterfactual.state[counterfactual_step]
         c_divergent_img = make_img(
-            c_state, "Counterfactual Trajectory", downscale_factor=2, active=diverged
+            c_state, "Alternative Path", downscale_factor=2, active=diverged
         )
         # Some trajectories had different lengths, so this preserves
         # the counterfactual state if this trajectory ends first
@@ -144,7 +300,7 @@ def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory)
                 c_state = counterfactual.state[counterfactual_step]
                 c_divergent_img = make_img(
                     c_state,
-                    "Counterfactual Trajectory",
+                    "Alternative Path",
                     downscale_factor=2,
                     active=diverged,
                 )
@@ -158,7 +314,7 @@ def side_by_side_visualization(original: Trajectory, counterfactual: Trajectory)
             c_state = counterfactual.state[counterfactual_step]
             c_divergent_img = make_img(
                 c_state,
-                "Counterfactual Trajectory",
+                "Alternative Path",
                 downscale_factor=2,
                 active=diverged,
             )
